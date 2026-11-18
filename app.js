@@ -20,13 +20,15 @@ const CONFIG = {
   // 1. Konfigurasi Google Sheets SEKOLAH VOKASI
   VOKASI: {
     spreadsheetId: '1WgHd9zG0FYvaKxRC2GrLLONx3z5RJ8xfNxEpywXMins',
-    sheetName: 'SUMKAL'
+    sheetName: 'SUMKAL',
+    tq: 'select A,B,C,E,F,H,K,L,T,Y,AA,AB,AC,AJ,AT,AU,AV,AW,AX,BE,BM,BN,BO,BP,BS where B is not null'
   },
 
   // 2. Konfigurasi Google Sheets SEKOLAH TERPADU
   TERPADU: {
     spreadsheetId: '13ixWoCMBWe9Atzi6lqRaAK8Aw7J5B_SUClLfhW-mUIA',
-    sheetName: 'SUMKAL'
+    sheetName: 'SUMKAL',
+    tq: 'select A,B,C,E,F,G,I,L,M,S,V,X,Y,Z,AE,AO,AP,AQ,AR,AS,AZ,BH,BI,BJ,BK where B is not null'
   },
 
   // 3. Konfigurasi Google Sheets SEKOLAH RAKYAT TAHAP 3 TAHUN 2026
@@ -196,14 +198,14 @@ window.switchProgram = function(program, forceReload = false) {
 };
 
 // ==================== FETCH GOOGLE SHEETS (GVIZ JSONP) ====================
-function fetchSheetViaJsonp(spreadsheetId, sheetName) {
+function fetchSheetViaJsonp(spreadsheetId, sheetName, tqQuery = '') {
   return new Promise((resolve, reject) => {
     const callbackName = 'gvizCb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
     const script = document.createElement('script');
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error(`Timeout mengambil data sheet ${sheetName || ''}.`));
-    }, 15000);
+      reject(new Error(`Timeout (30 detik) mengambil data sheet ${sheetName || ''}. Coba klik Refresh.`));
+    }, 30000);
 
     function cleanup() {
       clearTimeout(timeout);
@@ -214,17 +216,19 @@ function fetchSheetViaJsonp(spreadsheetId, sheetName) {
     window[callbackName] = function(response) {
       cleanup();
       if (!response || response.status === 'error') {
-        reject(new Error((response && response.errors && response.errors[0]?.message) || 'Gagal membaca Google Sheets.'));
+        const detail = (response && response.errors && response.errors.map((e) => e.detailed_message || e.message).join(' | ')) || 'Gagal membaca Google Sheets.';
+        reject(new Error(detail));
         return;
       }
       resolve(response.table);
     };
 
     const sheetParam = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : '';
-    script.src = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json;responseHandler:${callbackName}${sheetParam}`;
+    const tqParam = tqQuery ? `&tq=${encodeURIComponent(tqQuery)}` : '';
+    script.src = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json;responseHandler:${callbackName}${sheetParam}${tqParam}`;
     script.onerror = () => {
       cleanup();
-      reject(new Error('Gagal terhubung ke Google Sheets. Pastikan akses sheet sudah "Anyone with the link - Viewer".'));
+      reject(new Error('Gagal terhubung ke Google Sheets. Pastikan akses Share pada file Google Sheets sudah diset ke "Anyone with the link (Siapa saja yang memiliki link) - Viewer".'));
     };
     document.body.appendChild(script);
   });
@@ -314,7 +318,7 @@ async function loadProgramData(program, forceReload = false) {
         parsed.push(...parseRakyatUnitTab(tbl, defaultUid));
       });
     } else {
-      const table = await fetchSheetViaJsonp(progCfg.spreadsheetId, progCfg.sheetName);
+      const table = await fetchSheetViaJsonp(progCfg.spreadsheetId, progCfg.sheetName, progCfg.tq || '');
       parsed = parseGvizTable(table, program);
       if (progCfg.filterSumkalOnly) {
         parsed = parsed.filter((r) => isSumkalUid(r.uid));
